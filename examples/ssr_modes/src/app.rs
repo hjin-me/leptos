@@ -18,7 +18,7 @@ pub fn App(cx: Scope) -> impl IntoView {
             <main>
                 <Routes>
                     // We’ll load the home page with out-of-order streaming and <Suspense/>
-                    <Route path="" view=|cx| view! { cx, <HomePage/> }/>
+                    <Route path="" ssr=SsrMode::InOrder view=|cx| view! { cx, <HomePage/> }/>
 
                     // We'll load the posts with async rendering, so they can set
                     // the title and metadata *after* loading the data
@@ -38,21 +38,32 @@ fn HomePage(cx: Scope) -> impl IntoView {
     // load the posts
     let posts =
         create_resource(cx, || (), |_| async { list_post_metadata().await });
-    let posts_view = move || {
-        posts.with(cx, |posts| posts
-            .clone()
-            .map(|posts| {
-                posts.iter()
-                .map(|post| view! { cx, <li><a href=format!("/post/{}", post.id)>{&post.title}</a></li>})
-                .collect::<Vec<_>>()
-            })
-        )
-    };
 
     view! { cx,
         <h1>"My Great Blog"</h1>
         <Suspense fallback=move || view! { cx, <p>"Loading posts..."</p> }>
-            <ul>{posts_view}</ul>
+            <ul>
+         {move || {
+            posts.read(cx)
+                .map(|a| {
+                match a {
+                    Ok(posts) => view! {
+                        cx,
+                        <For each=move || posts.clone() key=|post| post.id
+                            view=move |cx, post| {
+                                view! { cx,
+                                    <li><a href=format!("/post/{}", post.id)>{&post.title}</a></li>
+                                }
+                        }/>
+                    }.into_view(cx),
+                    Err(e) => view! {
+                        cx,
+                        <p>{format!("Error: {}", e)}</p>
+                    }.into_view(cx)
+                }
+            })
+        }}
+        </ul>
         </Suspense>
     }
 }
